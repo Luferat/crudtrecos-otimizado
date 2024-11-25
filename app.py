@@ -1,13 +1,17 @@
 # Importa as dependências do aplicativo
-from flask import Flask, abort, g, make_response, redirect, render_template, request, url_for
+from flask import Flask, g, make_response, redirect, render_template, request, url_for
 from flask_mysqldb import MySQL
-import json
-from functions.geral import calcular_idade, datetime_para_string, gerar_senha, remove_prefixo
+from functions.geral import calcular_idade
 from modules.apaga import mod_apaga
+from modules.cadastro import mod_cadastro
 from modules.edita import mod_edita
 from modules.index import mod_index
+from modules.login import mod_login
+from modules.logout import mod_logout
+from modules.novasenha import mod_novasenha
 from modules.novo import mod_novo
 from modules.page_not_found import mod_page_not_found
+from modules.perfil import mod_perfil
 from modules.start import mod_start
 
 
@@ -57,254 +61,27 @@ def apaga(id):
 
 @app.route('/login', methods=['GET', 'POST'])  # Rota para login de usuário
 def login():
-
-    # Se o usuário está logado, redireciona para a página de perfil
-    if g.usuario != '':
-        return redirect(url_for('perfil'))
-
-    erro = False
-
-    # Se o formulário foi enviado
-    if request.method == 'POST':
-
-        # Pega os dados preenchidos no formulário
-        form = dict(request.form)
-
-        # Teste mesa
-        # print('\n\n\n FORM:', form, '\n\n\n')
-
-        # Pesquisa se os dados existem no banco de dados → usuario
-        sql = '''
-            SELECT *,
-                -- Gera uma versão das datas em pt-BR para salvar no cookie
-                DATE_FORMAT(u_data, '%%d/%%m/%%Y às %%H:%%m') AS u_databr,
-                DATE_FORMAT(u_nascimento, '%%d/%%m/%%Y') AS u_nascimentobr
-            FROM usuario
-            WHERE u_email = %s
-                AND u_senha = SHA1(%s)
-                AND u_status = 'on'
-        '''
-        cur = mysql.connection.cursor()
-        cur.execute(sql, (form['email'], form['senha'],))
-        usuario = cur.fetchone()
-        cur.close()
-
-        # Teste mesa
-        # print('\n\n\n DB:', usuario, '\n\n\n')
-
-        if usuario == None:
-            # Se o usuário não foi encontrado
-            erro = True
-        else:
-            # Se achou o usuário, apaga a senha do usuário
-            del usuario['u_senha']
-
-            # Extrai o primeiro nome do usuário
-            usuario['u_pnome'] = usuario['u_nome'].split()[0]
-
-            # Formata as datas para usar no JSON
-            usuario = datetime_para_string(usuario)
-
-            # Remove o prefixo das chaves do dicionário
-            cookie_valor = remove_prefixo(usuario)
-
-            # Converte os dados em JSON (texto) para gravar no cookie,
-            # porque cookies só aceitam dados na forma texto
-            cookie_json = json.dumps(cookie_valor)
-
-            # Teste de mesa
-            # print('\n\n\n JSON:', cookie_json, '\n\n\n')
-
-            # Prepara a página de destino → index
-            resposta = make_response(redirect(url_for('index')))
-
-            # Cria o cookie
-            resposta.set_cookie(
-                key='usuario',  # Nome do cookie
-                value=cookie_json,  # Valor a ser gravado no cookie
-                max_age=60 * 60 * 24 * 365  # Validade do cookie em segundos
-            )
-
-            # Redireciona para a página de destino → index
-            return resposta
-
-    # Dados, variáveis e valores a serem passados para o template HTML
-    pagina = {
-        'titulo': 'CRUDTrecos - Login',
-        'erro': erro
-    }
-
-    return render_template('login.html', **pagina)
+    return mod_login(mysql=mysql)
 
 
 @app.route('/logout')
 def logout():
-
-    # Se o usuário não está logado redireciona para a página de login
-    if g.usuario == '':
-        return redirect(url_for('login'))
-
-    # Página de destino após logout
-    resposta = make_response(redirect(url_for('login')))
-
-    # Apaga o cookie do usuário
-    resposta.set_cookie(
-        key='usuario',  # Nome do cookie
-        value='',  # Apara o valor do cookie
-        max_age=0  # A validade do cookie é ZERO
-    )
-
-    # Redireciona para login
-    return resposta
+    return mod_logout()
 
 
 @app.route('/cadastro', methods=['GET', 'POST'])  # Cadastro de usuário
 def cadastro():
-
-    jatem = ''
-    success = False
-
-    # Se o usuário está logado redireciona para a página de perfil
-    if g.usuario != '':
-        return redirect(url_for('perfil'))
-
-    if request.method == 'POST':
-
-        form = dict(request.form)
-
-        # Verifica se usuário já está cadastrado, pelo e-mail
-        sql = "SELECT u_id, u_status FROM usuario WHERE u_email = %s AND u_status != 'del'"
-        cur = mysql.connection.cursor()
-        cur.execute(sql, (form['email'],))
-        rows = cur.fetchall()
-        cur.close()
-
-        # print('\n\n\n LEN:', len(rows), '\n\n\n')
-
-        if len(rows) > 0:
-            # Se já está cadastrado
-            if rows[0]['u_status'] == 'off':
-                jatem = 'Este e-mail já está cadastrado para um usuário inativo. Entre em contato para saber mais.'
-            else:
-                jatem = 'Este e-mail já está cadastrado. Tente fazer login ou solicitar uma nova senha.'
-        else:
-            # Se não está cadastrado, inclui os dados do form no banco de dados
-            sql = "INSERT INTO usuario (u_nome, u_nascimento, u_email, u_senha) VALUES (%s, %s, %s, SHA1(%s))"
-            cur = mysql.connection.cursor()
-            cur.execute(
-                sql, (
-                    form['nome'],
-                    form['nascimento'],
-                    form['email'],
-                    form['senha'],
-                )
-            )
-            mysql.connection.commit()
-            cur.close()
-
-            success = True
-
-    # Dados, variáveis e valores a serem passados para o template HTML
-    pagina = {
-        'titulo': 'CRUDTrecos - Cadastre-se',
-        'jatem': jatem,
-        'success': success,
-    }
-
-    return render_template('cadastro.html', **pagina)
+    return mod_cadastro(mysql=mysql)
 
 
 @app.route('/novasenha', methods=['GET', 'POST'])  # Pedido de senha de usuário
 def novasenha():
-
-    novasenha = ''
-    erro = False
-
-    # Se o usuário está logado, redireciona para a página de perfil
-    if g.usuario != '':
-        return redirect(url_for('perfil'))
-
-    # Se o formulário foi enviado
-    if request.method == 'POST':
-
-        # Obtém dados preenchidos
-        form = dict(request.form)
-
-        # Teste de mesa
-        # print('\n\n\n FORM:', form, '\n\n\n')
-
-        # Pesquisa pelo email e nascimento informados, no banco de dados
-        sql = '''
-            SELECT u_id
-            FROM usuario
-            WHERE u_email = %s
-                AND u_nascimento = %s
-                AND u_status = 'on'
-        '''
-        cur = mysql.connection.cursor()
-        cur.execute(sql, (form['email'], form['nascimento'],))
-        row = cur.fetchone()
-        cur.close()
-
-        # Teste de mesa
-        # print('\n\n\n DB:', row, '\n\n\n')
-
-        # Se o usuário não existe
-        if row == None:
-            # Exibe mensagem no frontend
-            erro = True
-        else:
-            # Gera uma nova senha
-            novasenha = gerar_senha()
-
-            # Salva a nova senha no banco de dados
-            sql = "UPDATE usuario SET u_senha = SHA1(%s) WHERE u_id = %s"
-            cur = mysql.connection.cursor()
-            cur.execute(sql, (novasenha, row['u_id'],))
-            mysql.connection.commit()
-            cur.close()
-
-    # Dados, variáveis e valores a serem passados para o template HTML
-    pagina = {
-        'titulo': 'CRUDTrecos - Nova Senha',
-        'erro': erro,
-        'novasenha': novasenha,
-    }
-
-    return render_template('novasenha.html', **pagina)
+    return mod_novasenha(mysql=mysql)
 
 
 @app.route('/perfil')
 def perfil():
-
-    # Se o usuário não está logado redireciona para a página de login
-    if g.usuario == '':
-        return redirect(url_for('login'))
-
-    # Calcula idade do usuário
-    g.usuario['idade'] = calcular_idade(g.usuario['nascimento'])
-
-    # Obtém a quantidade de trecos ativos do usuário
-    sql = "SELECT count(t_id) AS total FROM treco WHERE t_usuario = %s AND t_status = 'on'"
-    cur = mysql.connection.cursor()
-    cur.execute(sql, (g.usuario['id'],))
-    row = cur.fetchone()
-    cur.close()
-
-    # Teste de mesa
-    # print('\n\n\n DB', row, '\n\n\n')
-
-    # Adiciona a quantidade ao perfil
-    g.usuario['total'] = row['total']
-
-    # Dados, variáveis e valores a serem passados para o template HTML
-    pagina = {
-        'titulo': 'CRUDTrecos - Novo Treco',
-        'usuario': g.usuario,
-    }
-
-    # Renderiza o template HTML, passaod valores para ele
-    return render_template('perfil.html', **pagina)
+    return mod_perfil(mysql)
 
 
 @app.route('/apagausuario')

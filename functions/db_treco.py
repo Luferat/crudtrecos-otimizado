@@ -101,3 +101,13 @@ def delete_treco(mysql, id):
     cur.close()
 
     return True
+
+
+def get_count_user_trecos(mysql):
+    sql = "SELECT count(t_id) AS total FROM treco WHERE t_usuario = %s AND t_status = 'on'"
+    cur = mysql.connection.cursor()
+    cur.execute(sql, (g.usuario['id'],))
+    row = cur.fetchone()
+    cur.close()
+
+    return row
