@@ -29,7 +29,8 @@ def datetime_para_string(data):
             # Converte datetime para string ISO 8601
             data[key] = value.isoformat()
         elif isinstance(value, date):
-            data[key] = value.isoformat()  # Converte date para string ISO 8601
+            # Converte date para string ISO 8601
+            data[key] = value.isoformat()
     return data
 
 
@@ -86,5 +87,13 @@ def gerar_senha(tamanho=8):
 
     return ''.join(senha)
 
-# Teste de mesa
-# print('\n\n\n', gerar_senha(), '\n\n\n')
+
+# Teste de "mesa"
+if __name__ == '__main__':
+    prefixed = {
+        'pre_id': 1,
+        'pre_name': 'Joca da Silva',
+        'pre_email': 'jocasilva@email.com'
+    }
+    print('\n remove_prefixo() → ', remove_prefixo(prefixed), '\n')
+    print('\n gerar_senha() →', gerar_senha(), '\n')
